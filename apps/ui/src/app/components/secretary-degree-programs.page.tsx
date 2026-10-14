@@ -1,0 +1,289 @@
+import { useEffect, useState } from 'react';
+import { DegreeProgram } from '@exam-planner/shared-types';
+import {
+  createSecretaryDegreeProgram,
+  deleteSecretaryDegreeProgram,
+  fetchSecretaryDegreePrograms,
+} from './secretary.api';
+import {
+  defaultDegreeProgramForm,
+  DEGREE_PROGRAM_YEARS_KEY,
+  DegreeProgramFormState,
+  DegreeProgramType,
+  DegreeProgramYearCount,
+  getDegreeProgramDuration,
+  getDegreeProgramTypeLabel,
+  getStoredDegreeProgramYears,
+} from './secretary-dashboard.types';
+
+export function SecretaryDegreeProgramsPage() {
+  const [degreePrograms, setDegreePrograms] = useState<DegreeProgram[]>([]);
+  const [degreeProgramForm, setDegreeProgramForm] =
+    useState<DegreeProgramFormState>(defaultDegreeProgramForm);
+  const [degreeProgramYears, setDegreeProgramYears] = useState<
+    Record<string, DegreeProgramYearCount>
+  >(() => getStoredDegreeProgramYears());
+  const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadDegreePrograms() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const loadedDegreePrograms = await fetchSecretaryDegreePrograms();
+        setDegreePrograms(loadedDegreePrograms);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Caricamento fallito');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    void loadDegreePrograms();
+  }, []);
+
+  function updateDegreeProgramFormField<K extends keyof DegreeProgramFormState>(
+    field: K,
+    value: DegreeProgramFormState[K]
+  ) {
+    setDegreeProgramForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  async function refreshDegreePrograms() {
+    const loadedDegreePrograms = await fetchSecretaryDegreePrograms();
+    setDegreePrograms(loadedDegreePrograms);
+  }
+
+  function updateDegreeProgramYears(
+    degreeProgramId: string,
+    years: DegreeProgramYearCount
+  ) {
+    setDegreeProgramYears((current) => {
+      const next = {
+        ...current,
+        [degreeProgramId]: years,
+      };
+      localStorage.setItem(DEGREE_PROGRAM_YEARS_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  function removeDegreeProgramYears(degreeProgramId: string) {
+    setDegreeProgramYears((current) => {
+      const next = { ...current };
+      delete next[degreeProgramId];
+      localStorage.setItem(DEGREE_PROGRAM_YEARS_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  async function handleCreateDegreeProgram() {
+    setIsSubmitting(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const degreeProgramId = degreeProgramForm.id.trim();
+      const degreeProgramCode = degreeProgramForm.code.trim();
+      const degreeProgramName = degreeProgramForm.name.trim();
+
+      if (!degreeProgramId) {
+        throw new Error('Inserisci un identificativo valido');
+      }
+
+      const alreadyExists = degreePrograms.some(
+        (program) =>
+          program.id.trim().toLowerCase() === degreeProgramId.toLowerCase()
+      );
+
+      if (alreadyExists) {
+        throw new Error('Esiste gia un corso di laurea con questo identificativo');
+      }
+
+      await createSecretaryDegreeProgram({
+        id: degreeProgramId,
+        code: degreeProgramCode,
+        name: degreeProgramName,
+      });
+      updateDegreeProgramYears(
+        degreeProgramId,
+        getDegreeProgramDuration(degreeProgramForm.type)
+      );
+      await refreshDegreePrograms();
+      setDegreeProgramForm(defaultDegreeProgramForm);
+      setSuccessMessage('Corso di laurea creato');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Operazione non riuscita');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleDeleteDegreeProgram(id: string) {
+    setIsSubmitting(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      await deleteSecretaryDegreeProgram(id);
+      removeDegreeProgramYears(id);
+      await refreshDegreePrograms();
+      setSuccessMessage('Corso di laurea eliminato');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Operazione non riuscita');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  const degreeProgramDuration = getDegreeProgramDuration(degreeProgramForm.type);
+  const degreeProgramPreviewYears = Array.from(
+    { length: degreeProgramDuration },
+    (_item, index) => index + 1
+  );
+
+  if (loading) {
+    return <section className="dashboard-grid secretary-layout">Caricamento corsi...</section>;
+  }
+
+  return (
+    <>
+      {error ? <div className="alert error">{error}</div> : null}
+      {successMessage ? <div className="alert success">{successMessage}</div> : null}
+
+      <section className="dashboard-grid secretary-layout">
+        <div className="panel">
+          <div className="panel__header">
+            <div>
+              <p className="eyebrow">Corsi di laurea</p>
+              <h2>Nuovo corso di laurea</h2>
+            </div>
+          </div>
+
+          <div className="form-grid">
+            <label>
+              Identificativo
+              <input
+                value={degreeProgramForm.id}
+                onChange={(event) =>
+                  updateDegreeProgramFormField('id', event.target.value)
+                }
+                placeholder="ingeElet"
+              />
+            </label>
+
+            <label>
+              Codice
+              <input
+                value={degreeProgramForm.code}
+                onChange={(event) =>
+                  updateDegreeProgramFormField('code', event.target.value)
+                }
+                placeholder="L-8"
+              />
+            </label>
+
+            <label>
+              Nome
+              <input
+                value={degreeProgramForm.name}
+                onChange={(event) =>
+                  updateDegreeProgramFormField('name', event.target.value)
+                }
+                placeholder="Ingegneria Elettronica"
+              />
+            </label>
+
+            <label>
+              Tipo corso
+              <select
+                value={degreeProgramForm.type}
+                onChange={(event) =>
+                  updateDegreeProgramFormField(
+                    'type',
+                    event.target.value as DegreeProgramType
+                  )
+                }
+              >
+                <option value="triennale">Laurea triennale</option>
+                <option value="magistrale">Laurea magistrale</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="panel-section">
+            <h3>Anni previsti</h3>
+            <div className="summary-row">
+              <span>
+                {degreeProgramForm.type === 'triennale'
+                  ? 'Laurea triennale'
+                  : 'Laurea magistrale'}
+              </span>
+              <span>{degreeProgramDuration} anni</span>
+            </div>
+            <div className="summary-row">
+              <span>Anni disponibili</span>
+              <span>
+                {degreeProgramPreviewYears
+                  .map((year) => `${year} anno`)
+                  .join(', ')}
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="primary"
+            onClick={() => void handleCreateDegreeProgram()}
+            disabled={isSubmitting}
+          >
+            Aggiungi corso di laurea
+          </button>
+        </div>
+
+        <div className="panel">
+          <div className="panel__header">
+            <div>
+              <p className="eyebrow">Corsi di laurea</p>
+              <h2>Elenco corsi</h2>
+            </div>
+          </div>
+
+          <div className="panel-section">
+            {degreePrograms.map((program) => (
+              <div className="summary-row" key={program.id}>
+                <span>
+                  {program.code}
+                  <br />
+                  {program.id}
+                </span>
+                <span>
+                  {program.name}
+                  <br />
+                  {getDegreeProgramTypeLabel(program, degreeProgramYears)}
+                </span>
+                <span className="inline-actions">
+                  <button
+                    type="button"
+                    className="danger"
+                    onClick={() => void handleDeleteDegreeProgram(program.id)}
+                    disabled={isSubmitting}
+                  >
+                    Elimina
+                  </button>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </>
+  );
+}

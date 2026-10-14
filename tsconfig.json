@@ -2,5 +2,51 @@
   "extends": "./tsconfig.base.json",
   "compileOnSave": false,
   "files": [],
-  "references": []
+  "references": [
+    {
+      "path": "./apps/api-e2e"
+    },
+    {
+      "path": "./apps/api"
+    },
+    {
+      "path": "./apps/ui-e2e"
+    },
+    {
+      "path": "./apps/ui"
+    },
+    {
+      "path": "./libs/server/users"
+    },
+    {
+      "path": "./libs/server/appointments"
+    },
+    {
+      "path": "./libs/server/calendar"
+    },
+    {
+      "path": "./libs/server/sessions"
+    },
+    {
+      "path": "./libs/server/catalog"
+    },
+    {
+      "path": "./libs/server/subject"
+    },
+    {
+      "path": "./libs/shared/types"
+    },
+    {
+      "path": "./libs/shared/utils"
+    },
+    {
+      "path": "./libs/server/auth"
+    },
+    {
+      "path": "./libs/database"
+    },
+    {
+      "path": "./libs/server/security"
+    }
+  ]
 }

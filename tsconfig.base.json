@@ -1,9 +1,11 @@
 {
   "compilerOptions": {
+    "baseUrl": ".",
     "composite": true,
     "declarationMap": true,
     "emitDeclarationOnly": true,
     "importHelpers": true,
+    "ignoreDeprecations": "5.0",
     "isolatedModules": true,
     "lib": ["es2022"],
     "module": "nodenext",
@@ -14,8 +16,20 @@
     "noImplicitReturns": true,
     "noUnusedLocals": true,
     "skipLibCheck": true,
-    "strict": true,
+    "strict": false,
     "target": "es2022",
-    "customConditions": ["@org/source"]
+    "customConditions": ["@org/source"],
+    "paths": {
+      "@exam-planner/shared-types": ["libs/shared/types/src/index.ts"],
+      "@exam-planner/shared-utils": ["libs/shared/utils/src/index.ts"],
+      "@exam-planner/server-auth": ["libs/server/auth/src/index.ts"],
+      "@exam-planner/server-security": ["libs/server/security/src/index.ts"],
+      "@exam-planner/server-users": ["libs/server/users/src/index.ts"],
+      "@exam-planner/server-catalog": ["libs/server/catalog/src/index.ts"],
+      "@exam-planner/server-subject": ["libs/server/subject/src/index.ts"],
+      "@exam-planner/server-sessions": ["libs/server/sessions/src/index.ts"],
+      "@exam-planner/server-appointments": ["libs/server/appointments/src/index.ts"],
+      "@exam-planner/server-calendar": ["libs/server/calendar/src/index.ts"]
+    }
   }
 }

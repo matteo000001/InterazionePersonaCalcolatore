@@ -1,0 +1,373 @@
+import { useEffect, useState } from 'react';
+import {
+  CourseYear,
+  DegreeProgram,
+  Subject,
+  User,
+  UserRole,
+} from '@exam-planner/shared-types';
+import {
+  createSecretarySubject,
+  deleteSecretarySubject,
+  fetchSecretaryCourseYears,
+  fetchSecretaryDegreePrograms,
+  fetchSecretarySubjects,
+  fetchSecretaryUsers,
+  updateSecretarySubject,
+} from './secretary.api';
+import {
+  defaultSubjectForm,
+  getStoredDegreeProgramYears,
+  getSubjectMaxCourseYear,
+  SubjectFormState,
+} from './secretary-dashboard.types';
+
+export function SecretarySubjectsPage() {
+  const [users, setUsers] = useState<User[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [degreePrograms, setDegreePrograms] = useState<DegreeProgram[]>([]);
+  const [courseYears, setCourseYears] = useState<CourseYear[]>([]);
+  const [subjectForm, setSubjectForm] =
+    useState<SubjectFormState>(defaultSubjectForm);
+  const [editingSubjectId, setEditingSubjectId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [degreeProgramYears] = useState(() => getStoredDegreeProgramYears());
+
+  useEffect(() => {
+    async function loadSubjectsPage() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const [
+          loadedUsers,
+          loadedSubjects,
+          loadedDegreePrograms,
+          loadedCourseYears,
+        ] = await Promise.all([
+          fetchSecretaryUsers(),
+          fetchSecretarySubjects(),
+          fetchSecretaryDegreePrograms(),
+          fetchSecretaryCourseYears(),
+        ]);
+        setUsers(loadedUsers);
+        setSubjects(loadedSubjects);
+        setDegreePrograms(loadedDegreePrograms);
+        setCourseYears(loadedCourseYears);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Caricamento fallito');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    void loadSubjectsPage();
+  }, []);
+
+  function updateSubjectFormField<K extends keyof SubjectFormState>(
+    field: K,
+    value: SubjectFormState[K]
+  ) {
+    setSubjectForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function selectSubjectDegreePrograms(options: HTMLSelectElement) {
+    const selectedIds = Array.from(options.selectedOptions).map(
+      (option) => option.value
+    );
+
+    updateSubjectFormField('degreeProgramIds', selectedIds);
+
+    const selectedCourseYear = courseYears.find(
+      (year) => year.id === subjectForm.courseYearId
+    );
+    const maxSelectedCourseYear = getSubjectMaxCourseYear(
+      selectedIds,
+      courseYears,
+      degreeProgramYears
+    );
+
+    if (
+      selectedCourseYear &&
+      maxSelectedCourseYear !== undefined &&
+      selectedCourseYear.year > maxSelectedCourseYear
+    ) {
+      updateSubjectFormField('courseYearId', '');
+    }
+  }
+
+  async function refreshSubjects() {
+    const loadedSubjects = await fetchSecretarySubjects();
+    setSubjects(loadedSubjects);
+  }
+
+  function startEditSubject(selectedSubject: Subject) {
+    setEditingSubjectId(selectedSubject.id);
+    setSubjectForm({
+      name: selectedSubject.name,
+      teacherId: selectedSubject.teacherId,
+      degreeProgramIds: selectedSubject.degreeProgramIds ?? [],
+      courseYearId: selectedSubject.courseYearId,
+    });
+  }
+
+  function resetSubjectForm() {
+    setEditingSubjectId(null);
+    setSubjectForm(defaultSubjectForm);
+  }
+
+  async function handleSaveSubject() {
+    setIsSubmitting(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      if (subjectForm.teacherId === '') {
+        throw new Error('Seleziona un docente valido');
+      }
+
+      const payload = {
+        name: subjectForm.name,
+        teacherId: subjectForm.teacherId,
+        degreeProgramIds: subjectForm.degreeProgramIds,
+        courseYearId: subjectForm.courseYearId,
+      };
+
+      if (editingSubjectId) {
+        await updateSecretarySubject(editingSubjectId, payload);
+        setSuccessMessage('Materia aggiornata');
+      } else {
+        await createSecretarySubject(payload);
+        setSuccessMessage('Materia creata');
+      }
+
+      await refreshSubjects();
+      resetSubjectForm();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Operazione non riuscita');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleDeleteSubject(id: number) {
+    setIsSubmitting(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      await deleteSecretarySubject(id);
+      await refreshSubjects();
+
+      if (editingSubjectId === id) {
+        resetSubjectForm();
+      }
+
+      setSuccessMessage('Materia eliminata');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Operazione non riuscita');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  const teacherUsers = users.filter(
+    (currentUser) => currentUser.role === UserRole.TEACHER
+  );
+  const selectedSubjectTeacher = teacherUsers.find(
+    (currentUser) => currentUser.id === subjectForm.teacherId
+  );
+  const subjectDegreeProgramOptions = selectedSubjectTeacher
+    ? degreePrograms.filter((program) =>
+        selectedSubjectTeacher.managedDegreeProgramIds?.includes(program.id)
+      )
+    : degreePrograms;
+  const subjectMaxCourseYear = getSubjectMaxCourseYear(
+    subjectForm.degreeProgramIds,
+    courseYears,
+    degreeProgramYears
+  );
+  const subjectCourseYearOptions =
+    subjectMaxCourseYear === undefined
+      ? []
+      : courseYears.filter((year) => year.year <= subjectMaxCourseYear);
+
+  if (loading) {
+    return <section className="dashboard-grid secretary-layout">Caricamento materie...</section>;
+  }
+
+  return (
+    <>
+      {error ? <div className="alert error">{error}</div> : null}
+      {successMessage ? <div className="alert success">{successMessage}</div> : null}
+
+      <section className="dashboard-grid secretary-layout">
+        <div className="panel">
+          <div className="panel__header">
+            <div>
+              <p className="eyebrow">Materie</p>
+              <h2>{editingSubjectId ? 'Modifica materia' : 'Nuova materia'}</h2>
+            </div>
+          </div>
+
+          <div className="form-grid">
+            <label>
+              Nome
+              <input
+                value={subjectForm.name}
+                onChange={(event) =>
+                  updateSubjectFormField('name', event.target.value)
+                }
+                placeholder="Analisi 2"
+              />
+            </label>
+
+            <label>
+              Docente
+              <select
+                value={subjectForm.teacherId}
+                onChange={(event) => {
+                  const teacherId = event.target.value
+                    ? Number(event.target.value)
+                    : '';
+                  updateSubjectFormField('teacherId', teacherId);
+                  updateSubjectFormField('degreeProgramIds', []);
+                }}
+              >
+                <option value="">Seleziona docente</option>
+                {teacherUsers.map((teacher) => (
+                  <option key={teacher.id} value={teacher.id}>
+                    {teacher.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <label>
+            Corsi di laurea
+            <select
+              multiple
+              value={subjectForm.degreeProgramIds}
+              onChange={(event) =>
+                selectSubjectDegreePrograms(event.currentTarget)
+              }
+            >
+              {subjectDegreeProgramOptions.map((program) => (
+                <option key={program.id} value={program.id}>
+                  {program.code} - {program.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Anno di frequenza
+            <select
+              value={subjectForm.courseYearId}
+              disabled={subjectForm.degreeProgramIds.length === 0}
+              onChange={(event) =>
+                updateSubjectFormField('courseYearId', event.target.value)
+              }
+            >
+              <option value="">
+                {subjectForm.degreeProgramIds.length === 0
+                  ? 'Seleziona prima il corso'
+                  : 'Seleziona anno'}
+              </option>
+              {subjectCourseYearOptions.map((year) => (
+                <option key={year.id} value={year.id}>
+                  {year.year} anno
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="inline-actions">
+            <button
+              type="button"
+              className="primary"
+              onClick={() => void handleSaveSubject()}
+              disabled={isSubmitting}
+            >
+              {editingSubjectId ? 'Salva modifiche' : 'Aggiungi materia'}
+            </button>
+            {editingSubjectId ? (
+              <button
+                type="button"
+                className="secondary"
+                onClick={resetSubjectForm}
+                disabled={isSubmitting}
+              >
+                Annulla
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="panel__header">
+            <div>
+              <p className="eyebrow">Materie</p>
+              <h2>Elenco materie</h2>
+            </div>
+          </div>
+
+          <div className="panel-section">
+            {subjects.map((subject) => {
+              const teacher = users.find(
+                (currentUser) => currentUser.id === subject.teacherId
+              );
+              const subjectPrograms = degreePrograms
+                .filter((program) => subject.degreeProgramIds.includes(program.id))
+                .map((program) => program.id)
+                .join(', ');
+              const subjectYear = courseYears.find(
+                (year) => year.id === subject.courseYearId
+              );
+
+              return (
+                <div className="summary-row" key={subject.id}>
+                  <span>
+                    {subject.name}
+                    <br />
+                    {teacher?.name ?? 'Materia scoperta'}
+                  </span>
+                  <span>
+                    {subjectPrograms || '-'}
+                    <br />
+                    {subjectYear ? `${subjectYear.year} anno` : subject.courseYearId}
+                  </span>
+                  <span className="inline-actions">
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => startEditSubject(subject)}
+                      disabled={isSubmitting}
+                    >
+                      Modifica
+                    </button>
+                    <button
+                      type="button"
+                      className="danger"
+                      onClick={() => void handleDeleteSubject(subject.id)}
+                      disabled={isSubmitting}
+                    >
+                      Elimina
+                    </button>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+    </>
+  );
+}
